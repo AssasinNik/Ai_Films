@@ -1,0 +1,65 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "gnetId": null,
+  "graphTooltip": 0,
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Postgres Connections",
+      "targets": [
+        {"expr": "sum(pg_stat_activity_count{datname=\"movie_recommendation_db\"})"}
+      ],
+      "gridPos": {"h": 6, "w": 8, "x": 0, "y": 0}
+    },
+    {
+      "type": "stat",
+      "title": "Mongo Up",
+      "targets": [
+        {"expr": "avg(mongodb_up)"}
+      ],
+      "gridPos": {"h": 6, "w": 8, "x": 8, "y": 0}
+    },
+    {
+      "type": "stat",
+      "title": "Redis Up",
+      "targets": [
+        {"expr": "avg(redis_up)"}
+      ],
+      "gridPos": {"h": 6, "w": 8, "x": 16, "y": 0}
+    },
+    {
+      "type": "graph",
+      "title": "Kafka Messages In (sample)",
+      "targets": [
+        {"expr": "sum(rate(kafka_broker_topic_messages_in_total[5m]))"}
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 6}
+    },
+    {
+      "type": "graph",
+      "title": "Elasticsearch Indexing Rate",
+      "targets": [
+        {"expr": "rate(elasticsearch_indices_indexing_index_total[5m])"}
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 6}
+    },
+    {
+      "type": "graph",
+      "title": "Container CPU (cAdvisor)",
+      "targets": [
+        {"expr": "sum by (container_label_io_kubernetes_container_name) (rate(container_cpu_usage_seconds_total[5m]))"}
+      ],
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 14}
+    }
+  ],
+  "schemaVersion": 36,
+  "style": "dark",
+  "tags": ["movies", "infra"],
+  "templating": {"list": []},
+  "time": {"from": "now-6h", "to": "now"},
+  "timezone": "browser",
+  "title": "AI Films Overview",
+  "uid": "ai-films-overview",
+  "version": 1
+}

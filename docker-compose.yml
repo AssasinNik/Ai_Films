@@ -1,0 +1,546 @@
+version: '3.8'
+
+services:
+  # PostgreSQL - Main relational database
+  postgres:
+    image: postgres:15-alpine
+    container_name: movie_postgres
+    environment:
+      POSTGRES_DB: movie_recommendation_db
+      POSTGRES_USER: movie_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-movie_password_2025}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./schemas/postgresql_schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+      - ./schemas/postgres_config:/etc/postgresql/postgresql.conf:ro
+    command: >
+      postgres
+      -c shared_preload_libraries=pg_stat_statements
+      -c pg_stat_statements.track=all
+      -c max_connections=200
+      -c shared_buffers=256MB
+      -c effective_cache_size=1GB
+      -c maintenance_work_mem=64MB
+      -c checkpoint_completion_target=0.9
+      -c wal_buffers=16MB
+      -c default_statistics_target=100
+      -c random_page_cost=1.1
+      -c effective_io_concurrency=200
+    networks:
+      - movie_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U movie_user -d movie_recommendation_db"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # MongoDB - User data and emotional profiles
+  mongodb:
+    image: mongo:7.0
+    container_name: movie_mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: movie_admin
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-mongo_password_2025}
+      MONGO_INITDB_DATABASE: movie_recommendation_db
+    ports:
+      - "27018:27017"
+    volumes:
+      - mongodb_data:/data/db
+      - mongodb_config:/data/configdb
+      - ./schemas/mongodb_setup.js:/docker-entrypoint-initdb.d/setup.js:ro
+    command: >
+      mongod
+      --auth
+      --bind_ip_all
+      --wiredTigerCacheSizeGB 1
+    networks:
+      - movie_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh 'mongodb://movie_admin:${MONGO_PASSWORD:-mongo_password_2025}@localhost:27017/admin' --eval \"db.adminCommand('ping')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Elasticsearch - Search and recommendations
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: movie_elasticsearch
+    environment:
+      - node.name=movie-es-node
+      - cluster.name=movie-recommendation-cluster
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms1g -Xmx1g"
+      - xpack.security.enabled=false
+      - xpack.security.enrollment.enabled=false
+      - xpack.security.http.ssl.enabled=false
+      - xpack.security.transport.ssl.enabled=false
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+      - ./schemas/elasticsearch_setup.json:/usr/share/elasticsearch/config/setup.json:ro
+    networks:
+      - movie_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Kibana - Elasticsearch management interface
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.11.0
+    container_name: movie_kibana
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - SERVER_NAME=movie-kibana
+      - SERVER_HOST=0.0.0.0
+    ports:
+      - "5601:5601"
+    depends_on:
+      - elasticsearch
+    networks:
+      - movie_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5601/api/status || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis - Caching and sessions
+  redis:
+    image: redis:7.2-alpine
+    container_name: movie_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+      - ./schemas/redis_config.conf:/usr/local/etc/redis/redis.conf:ro
+    command: redis-server /usr/local/etc/redis/redis.conf
+    networks:
+      - movie_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis Commander - Redis management interface
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: movie_redis_commander
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    ports:
+      - "8081:8081"
+    depends_on:
+      - redis
+    networks:
+      - movie_network
+    restart: unless-stopped
+    platform: linux/amd64
+
+  # Prometheus - Monitoring
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: movie_prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - prometheus_data:/prometheus
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/rules:/etc/prometheus/alert_rules:ro
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    networks:
+      - movie_network
+    restart: unless-stopped
+
+  # Grafana - Monitoring dashboards
+  grafana:
+    image: grafana/grafana:latest
+    container_name: movie_grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin_password_2025}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./monitoring/grafana/dashboards_json:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+    networks:
+      - movie_network
+    restart: unless-stopped
+
+  # pgAdmin - PostgreSQL management interface
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: movie_pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@movie-recommendation.com
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-pgadmin_password_2025}
+    ports:
+      - "8080:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - postgres
+    networks:
+      - movie_network
+    restart: unless-stopped
+
+  # Alertmanager - Prometheus alerts router
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: movie_alertmanager
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+    networks:
+      - movie_network
+    restart: unless-stopped
+
+  # Postgres Exporter
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: movie_postgres_exporter
+    platform: linux/amd64
+    environment:
+      - DATA_SOURCE_NAME=postgresql://movie_user:${POSTGRES_PASSWORD:-movie_password_2025}@postgres:5432/movie_recommendation_db?sslmode=disable
+    depends_on:
+      - postgres
+    networks:
+      - movie_network
+    restart: unless-stopped
+
+  # MongoDB Exporter
+  mongodb-exporter:
+    image: bitnami/mongodb-exporter:latest
+    container_name: movie_mongodb_exporter
+    platform: linux/amd64
+    environment:
+      - MONGODB_URI=mongodb://movie_admin:${MONGO_PASSWORD:-mongo_password_2025}@mongodb:27017/admin
+    depends_on:
+      mongodb:
+          condition: service_healthy
+    networks:
+      - movie_network
+    restart: unless-stopped
+
+  # Redis Exporter
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: movie_redis_exporter
+    platform: linux/amd64
+    environment:
+      - REDIS_ADDR=redis://redis:6379
+    depends_on:
+      - redis
+    networks:
+      - movie_network
+    restart: unless-stopped
+
+  # Elasticsearch Exporter
+  elasticsearch-exporter:
+    image: quay.io/prometheuscommunity/elasticsearch-exporter:latest
+    container_name: movie_elasticsearch_exporter
+    platform: linux/amd64
+    command:
+      - --es.uri=http://elasticsearch:9200
+    depends_on:
+      - elasticsearch
+    networks:
+      - movie_network
+    restart: unless-stopped
+
+  # MinIO - S3-compatible object storage for user photos and media
+  minio:
+    image: minio/minio:latest
+    container_name: movie_minio
+    platform: linux/amd64
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+      MINIO_DOMAIN: minio
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    networks:
+      - movie_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  # MinIO Client - for bucket management
+  minio-client:
+    image: minio/mc:latest
+    container_name: movie_minio_client
+    platform: linux/amd64
+    depends_on:
+      - minio
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+    entrypoint: []
+    command: >
+      /bin/sh -c "
+        sleep 10 &&
+        mc alias set myminio http://minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD} &&
+        mc mb myminio/user-photos --ignore-existing &&
+        mc mb myminio/movie-posters --ignore-existing &&
+        mc mb myminio/movie-backdrops --ignore-existing &&
+        mc mb myminio/movie-videos --ignore-existing &&
+        mc anonymous set download myminio/user-photos &&
+        mc anonymous set download myminio/movie-posters &&
+        mc anonymous set download myminio/movie-backdrops &&
+        mc anonymous set download myminio/movie-videos &&
+        echo 'MinIO buckets created successfully'
+      "
+    networks:
+      - movie_network
+    restart: "no"
+
+  # Node Exporter - Host metrics (better ARM64 support)
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: movie_node_exporter
+    platform: linux/amd64
+    ports:
+      - "9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--path.rootfs=/rootfs'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    networks:
+      - movie_network
+    restart: unless-stopped
+
+  # Data initialization service
+  data-init:
+    image: python:3.11-slim
+    container_name: movie_data_init
+    volumes:
+      - ./scripts:/scripts:ro
+    working_dir: /scripts
+    command: >
+      bash -c "
+        pip install psycopg2-binary pymongo 'elasticsearch<9' redis requests kafka-python tqdm &&
+        python initialize_data.py
+      "
+    environment:
+      HOST_MONGO_URI: ${HOST_MONGO_URI:-mongodb://host.docker.internal:27017}
+      HOST_MONGO_DB: ${HOST_MONGO_DB:-catalog}
+      MOVIES_COLLECTION: ${MOVIES_COLLECTION:-movies}
+      PEOPLE_COLLECTION: ${PEOPLE_COLLECTION:-people}
+      SEASONS_COLLECTION: ${SEASONS_COLLECTION:-seasons}
+      PUBLISH_BATCH_SIZE: ${PUBLISH_BATCH_SIZE:-500}
+      BATCH_SIZE: ${BATCH_SIZE:-1000}
+      MAX_WORKERS: ${MAX_WORKERS:-4}
+      COMMIT_INTERVAL: ${COMMIT_INTERVAL:-500}
+      VERBOSE_LOGS: ${VERBOSE_LOGS:-false}
+      PROGRESS_ENABLED: ${PROGRESS_ENABLED:-true}
+      ES_BULK_SIZE: ${ES_BULK_SIZE:-1000}
+      REDIS_PIPELINE_SIZE: ${REDIS_PIPELINE_SIZE:-1000}
+      TRENDING_MIN_RATING: ${TRENDING_MIN_RATING:-7.0}
+      TRENDING_MIN_YEAR: ${TRENDING_MIN_YEAR:-2024}
+      ALWAYS_CACHE_RECENT: ${ALWAYS_CACHE_RECENT:-true}
+      SKIP_PEOPLE: ${SKIP_PEOPLE:-false}
+      SKIP_MOVIES: ${SKIP_MOVIES:-false}
+      SKIP_SEASONS: ${SKIP_SEASONS:-false}
+      ENABLE_REDIS: ${ENABLE_REDIS:-true}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      # PostgreSQL connection settings
+      PGHOST: postgres
+      PGPORT: 5432
+      PGUSER: movie_user
+      PGPASSWORD: ${POSTGRES_PASSWORD:-movie_password_2025}
+      PGDATABASE: movie_recommendation_db
+      # Elasticsearch settings
+      ELASTICSEARCH_URL: http://elasticsearch:9200
+      ENABLE_ES: true
+      CLEAR_TARGET_MONGO: ${CLEAR_TARGET_MONGO:-true}
+      TARGET_MONGO_URI: ${TARGET_MONGO_URI:-mongodb://movie_admin:${MONGO_PASSWORD:-mongo_password_2025}@mongodb:27017/movie_recommendation_db?authSource=admin}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - movie_network
+    restart: "no"
+
+  # User Management service
+  user-management:
+    build:
+      context: ./services/user_management
+    container_name: user_management_service
+    environment:
+      - MONGO_PASSWORD=${MONGO_PASSWORD:-mongo_password_2025}
+      - JWT_SECRET=${JWT_SECRET:-dev_jwt_secret_change_me}
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-minioadmin}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-minioadmin123}
+      - SPRING_DATA_MONGODB_URI=mongodb://movie_admin:${MONGO_PASSWORD:-mongo_password_2025}@mongodb:27017/movie_recommendation_db?authSource=admin
+      - SPRING_DATA_REDIS_HOST=redis
+      - SPRING_DATA_REDIS_PORT=6379
+      - MINIO_URL=http://minio:9000
+      - MINIO_PUBLIC_URL=http://localhost:9000
+      - MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE=health,info,metrics,prometheus
+    ports:
+      - "127.0.0.1:8082:8082"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      data-init:
+        condition: service_completed_successfully
+    networks:
+      - movie_network
+    restart: unless-stopped
+
+  gateway:
+    build:
+      context: ./services/gateway
+    container_name: api_gateway
+    environment:
+      - JWT_SECRET=${JWT_SECRET:-dev_jwt_secret_change_me}
+      - SPRING_DATA_REDIS_HOST=redis
+      - SPRING_DATA_REDIS_PORT=6379
+      - UPSTREAM_USER_MANAGEMENT_URI=http://user-management:8082
+      - UPSTREAM_MOVIE_LIBRARY_URI=http://movielibrary:8083
+    ports:
+      - "8085:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      data-init:
+        condition: service_completed_successfully
+    networks:
+      - movie_network
+    restart: unless-stopped
+
+  movielibrary:
+    build:
+      context: ./services/movielibrary
+    container_name: movie_library_service
+    environment:
+      - JWT_SECRET=${JWT_SECRET:-dev_jwt_secret_change_me}
+      - SPRING_R2DBC_URL=r2dbc:postgresql://postgres:5432/movie_recommendation_db
+      - SPRING_R2DBC_USERNAME=movie_user
+      - SPRING_R2DBC_PASSWORD=${POSTGRES_PASSWORD:-movie_password_2025}
+      - MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE=health,info,metrics,prometheus
+    ports:
+      - "127.0.0.1:8083:8083"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      data-init:
+        condition: service_completed_successfully
+    networks:
+      - movie_network
+    restart: unless-stopped
+
+  # MongoDB setup runner - applies schemas/indexes inside container as a final step
+  mongodb-setup:
+    image: mongo:7.0
+    container_name: movie_mongodb_setup
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      data-init:
+        condition: service_completed_successfully
+    environment:
+      - MONGO_PASSWORD=${MONGO_PASSWORD:-mongo_password_2025}
+    command: >
+      bash -c "mongosh 'mongodb://movie_admin:${MONGO_PASSWORD:-mongo_password_2025}@mongodb:27017/admin' /setup.js"
+    volumes:
+      - ./schemas/mongodb_setup.js:/setup.js:ro
+    networks:
+      - movie_network
+    restart: "no"
+
+
+volumes:
+  postgres_data:
+    driver: local
+  mongodb_data:
+    driver: local
+  mongodb_config:
+    driver: local
+  elasticsearch_data:
+    driver: local
+  redis_data:
+    driver: local
+  minio_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+  pgadmin_data:
+    driver: local
+
+networks:
+  movie_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+

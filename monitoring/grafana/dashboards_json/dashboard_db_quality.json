@@ -1,0 +1,38 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "panels": [
+    {
+      "type": "graph",
+      "title": "Postgres Slow Queries (approx)",
+      "targets": [
+        {"expr": "topk(10, rate(pg_stat_statements_total_time{db=\"movie_recommendation_db\"}[5m]))"}
+      ],
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 0}
+    },
+    {
+      "type": "graph",
+      "title": "Postgres Cache Hit Ratio",
+      "targets": [
+        {"expr": "avg(pg_stat_database_blks_hit) / (avg(pg_stat_database_blks_hit) + avg(pg_stat_database_blks_read))"}
+      ],
+      "gridPos": {"h": 6, "w": 12, "x": 0, "y": 8}
+    },
+    {
+      "type": "graph",
+      "title": "Mongo OPCounters (sample)",
+      "targets": [
+        {"expr": "rate(mongodb_mongod_metrics_document_total[5m])"}
+      ],
+      "gridPos": {"h": 6, "w": 12, "x": 12, "y": 8}
+    }
+  ],
+  "schemaVersion": 36,
+  "style": "dark",
+  "tags": ["db", "quality"],
+  "time": {"from": "now-6h", "to": "now"},
+  "timezone": "browser",
+  "title": "DB Quality & Performance",
+  "uid": "db-quality",
+  "version": 1
+}

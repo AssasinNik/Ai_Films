@@ -1,0 +1,313 @@
+{
+  "info": {
+    "name": "AI Films - Gateway API",
+    "_postman_id": "aifilms-gateway-collection",
+    "description": "Полная коллекция запросов через API Gateway. Используйте переменные baseUrl, accessToken, refreshToken. В описаниях каждого запроса приведены поля, примеры и ожидаемые ответы.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/api/v1/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth","api","v1","auth","register"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user1@example.com\",\n  \"password\": \"Passw0rd123\",\n  \"username\": \"User One\"\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "description": "Регистрация пользователя.\n\nПоля:\n- email: string (email) — уникальная почта\n- password: string (8-128 символов) — пароль\n- username: string (3-50) — отображаемое имя\n\nОжидаемый ответ 200:\n{\n  \"userId\": \"<uuid>\",\n  \"accessToken\": \"<JWT>\",\n  \"refreshToken\": \"<JWT>\"\n}\n"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.accessToken) pm.collectionVariables.set('accessToken', json.accessToken);",
+                  "if (json.refreshToken) pm.collectionVariables.set('refreshToken', json.refreshToken);",
+                  "if (json.userId) pm.collectionVariables.set('userId', json.userId);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/api/v1/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth","api","v1","auth","login"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user1@example.com\",\n  \"password\": \"Passw0rd123\"\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "description": "Логин пользователя. Возвращает access/refresh токены."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.accessToken) pm.collectionVariables.set('accessToken', json.accessToken);",
+                  "if (json.refreshToken) pm.collectionVariables.set('refreshToken', json.refreshToken);",
+                  "if (json.userId) pm.collectionVariables.set('userId', json.userId);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Refresh",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/api/v1/auth/refresh",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth","api","v1","auth","refresh"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "description": "Ротация refresh токена и получение новой пары токенов."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.accessToken) pm.collectionVariables.set('accessToken', json.accessToken);",
+                  "if (json.refreshToken) pm.collectionVariables.set('refreshToken', json.refreshToken);",
+                  "if (json.userId) pm.collectionVariables.set('userId', json.userId);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Mood",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {"exec": ["pm.request.headers.add({ key: 'Authorization', value: 'Bearer ' + (pm.collectionVariables.get('accessToken')||'') });"], "type": "text/javascript"}
+        }
+      ],
+      "item": [
+        {
+          "name": "Get My Mood",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/auth/api/v1/mood/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth","api","v1","mood","me"]
+            },
+            "description": "Текущий эмоциональный профиль пользователя. Если отсутствует — создаётся пустой. Ответ: EmotionalProfile (currentMood, moodHistory[])."
+          }
+        },
+        {
+          "name": "Update My Mood",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/api/v1/mood/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth","api","v1","mood","me"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"primary_emotion\": \"calm\",\n  \"intensity\": 0.6,\n  \"energy_level\": 0.4,\n  \"stress_level\": 0.2\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "description": "Обновление текущего настроения. Поля:\n- primary_emotion: строка (2-30), например calm, happy, sad, anxious\n- intensity: 0..1 — интенсивность\n- energy_level: 0..1 — уровень энергии\n- stress_level: 0..1 — уровень стресса\n\nВозвращает обновлённый EmotionalProfile."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {"exec": ["pm.request.headers.add({ key: 'Authorization', value: 'Bearer ' + (pm.collectionVariables.get('accessToken')||'') });"], "type": "text/javascript"}
+        }
+      ],
+      "item": [
+        {
+          "name": "Get Me",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/auth/api/v1/users/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth","api","v1","users","me"]
+            },
+            "description": "Информация о текущем пользователе. Требуется Authorization: Bearer {{accessToken}}.\n\nОжидаемый ответ 200: объект User."
+          }
+        },
+        {
+          "name": "Update Me",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/api/v1/users/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth","api","v1","users","me"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"New Name\"\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "description": "Обновление профиля. Поля:\n- username: новое имя пользователя."
+          }
+        },
+        {
+          "name": "Upload Photo",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/api/v1/users/me/photo",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth","api","v1","users","me","photo"]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {"key": "file", "type": "file", "src": ""}
+              ]
+            },
+            "description": "Загрузка фото пользователя (multipart/form-data, поле file). Возвращает { url }."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Movies",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {"exec": ["pm.request.headers.add({ key: 'Authorization', value: 'Bearer ' + (pm.collectionVariables.get('accessToken')||'') });"], "type": "text/javascript"}
+        }
+      ],
+      "item": [
+        {
+          "name": "Search Text",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/movies/search/text?q=звезда&type=movie&yearFrom=2018&yearTo=2025&country=США&minRating=6.5&ageRatingMax=18&orderBy=rating&direction=desc&page=1&size=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["movies","search","text"],
+              "query": [
+                {"key": "q", "value": "звезда"},
+                {"key": "type", "value": "movie"},
+                {"key": "yearFrom", "value": "2018"},
+                {"key": "yearTo", "value": "2025"},
+                {"key": "country", "value": "США"},
+                {"key": "minRating", "value": "6.5"},
+                {"key": "ageRatingMax", "value": "18"},
+                {"key": "orderBy", "value": "rating"},
+                {"key": "direction", "value": "desc"},
+                {"key": "page", "value": "1"},
+                {"key": "size", "value": "20"}
+              ]
+            },
+            "description": "Текстовый поиск по названию/альт. названию/описанию.\nОтвет: { movies: PagedResponse, series: PagedResponse }.\nЭлементы содержат: id, title, rating, year, genres[], country[], description, posterUrl, type."
+          }
+        },
+        {
+          "name": "Search Genres",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/movies/search/genres?genres=драма&genres=комедия&yearFrom=2010&page=1&size=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["movies","search","genres"],
+              "query": [
+                {"key": "genres", "value": "драма"},
+                {"key": "genres", "value": "комедия"},
+                {"key": "yearFrom", "value": "2010"},
+                {"key": "page", "value": "1"},
+                {"key": "size", "value": "20"}
+              ]
+            },
+            "description": "Поиск по жанрам (несколько значений параметра genres). Ранжирование по числу совпавших жанров, затем по рейтингу/году. Ответ: { movies, series }."
+          }
+        },
+        {
+          "name": "New Releases",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/movies/new?limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["movies","new"],
+              "query": [
+                {"key": "limit", "value": "10"}
+              ]
+            },
+            "description": "Новинки (последние по дате + лучший рейтинг). Возвращает { movies: [], series: [] }."
+          }
+        },
+        {
+          "name": "Details by ID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/movies/{{movieId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["movies","{{movieId}}"]
+            },
+            "description": "Полная информация о фильме/сериале: основные поля, жанры[], countries[], people[] (name, role, characterName), seasons[]."
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {"key": "baseUrl", "value": "http://localhost:8085"},
+    {"key": "accessToken", "value": ""},
+    {"key": "refreshToken", "value": ""},
+    {"key": "userId", "value": ""},
+    {"key": "movieId", "value": "1"}
+  ]
+}
+
+

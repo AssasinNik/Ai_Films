@@ -1,0 +1,825 @@
+{
+  "elasticsearch_setup": {
+    "cluster_settings": {
+      "cluster.name": "movie-recommendation-cluster",
+      "node.name": "movie-node-1",
+      "network.host": "0.0.0.0",
+      "http.port": 9200,
+      "discovery.type": "single-node",
+      "xpack.security.enabled": false,
+      "xpack.monitoring.enabled": true,
+      "indices.memory.index_buffer_size": "20%",
+      "indices.fielddata.cache.size": "30%"
+    },
+    
+    "index_templates": {
+      "movies_template": {
+        "index_patterns": ["movies*"],
+        "settings": {
+          "number_of_shards": 3,
+          "number_of_replicas": 1,
+          "refresh_interval": "30s",
+          "max_result_window": 50000,
+          "analysis": {
+            "analyzer": {
+              "russian_analyzer": {
+                "type": "custom",
+                "tokenizer": "standard",
+                "filter": [
+                  "lowercase",
+                  "russian_morphology",
+                  "russian_stop",
+                  "snowball_russian"
+                ]
+              },
+              "autocomplete_analyzer": {
+                "type": "custom",
+                "tokenizer": "keyword",
+                "filter": ["lowercase", "edge_ngram_filter"]
+              },
+              "search_analyzer": {
+                "type": "custom",
+                "tokenizer": "standard",
+                "filter": [
+                  "lowercase",
+                  "russian_morphology",
+                  "russian_stop"
+                ]
+              }
+            },
+            "filter": {
+              "edge_ngram_filter": {
+                "type": "edge_ngram",
+                "min_gram": 2,
+                "max_gram": 20
+              },
+              "russian_stop": {
+                "type": "stop",
+                "stopwords": "_russian_"
+              },
+              "snowball_russian": {
+                "type": "snowball",
+                "language": "Russian"
+              },
+              "russian_morphology": {
+                "type": "hunspell",
+                "locale": "ru_RU"
+              }
+            }
+          }
+        },
+        "mappings": {
+          "dynamic": "strict",
+          "properties": {
+            "movie_id": {
+              "type": "long"
+            },
+            "title": {
+              "type": "text",
+              "analyzer": "russian_analyzer",
+              "search_analyzer": "search_analyzer",
+              "fields": {
+                "autocomplete": {
+                  "type": "text",
+                  "analyzer": "autocomplete_analyzer",
+                  "search_analyzer": "search_analyzer"
+                },
+                "keyword": {
+                  "type": "keyword"
+                },
+                "raw": {
+                  "type": "text",
+                  "analyzer": "standard"
+                }
+              }
+            },
+            "alternative_name": {
+              "type": "text",
+              "analyzer": "russian_analyzer",
+              "search_analyzer": "search_analyzer"
+            },
+            "en_name": {
+              "type": "text",
+              "analyzer": "standard",
+              "fields": {
+                "keyword": {
+                  "type": "keyword"
+                }
+              }
+            },
+            "description": {
+              "type": "text",
+              "analyzer": "russian_analyzer",
+              "search_analyzer": "search_analyzer"
+            },
+            "year": {
+              "type": "integer"
+            },
+            "genres": {
+              "type": "nested",
+              "properties": {
+                "id": {
+                  "type": "integer"
+                },
+                "name": {
+                  "type": "keyword"
+                },
+                "weight": {
+                  "type": "float"
+                }
+              }
+            },
+            "countries": {
+              "type": "nested",
+              "properties": {
+                "id": {
+                  "type": "integer"
+                },
+                "name": {
+                  "type": "keyword"
+                }
+              }
+            },
+            "people": {
+              "type": "nested",
+              "properties": {
+                "id": {
+                  "type": "long"
+                },
+                "name": {
+                  "type": "text",
+                  "analyzer": "russian_analyzer",
+                  "fields": {
+                    "keyword": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "role": {
+                  "type": "keyword"
+                },
+                "character_name": {
+                  "type": "text",
+                  "analyzer": "russian_analyzer"
+                }
+              }
+            },
+            "ratings": {
+              "properties": {
+                "kp": {
+                  "type": "float"
+                },
+                "imdb": {
+                  "type": "float"
+                },
+                "average": {
+                  "type": "float"
+                },
+                "weighted": {
+                  "type": "float"
+                }
+              }
+            },
+            "votes": {
+              "properties": {
+                "kp": {
+                  "type": "integer"
+                },
+                "imdb": {
+                  "type": "integer"
+                },
+                "total": {
+                  "type": "integer"
+                }
+              }
+            },
+            "movie_length": {
+              "type": "integer"
+            },
+            "age_rating": {
+              "type": "integer"
+            },
+            "type": {
+              "type": "keyword"
+            },
+            "poster_url": {
+              "type": "keyword",
+              "index": false
+            },
+            "backdrop_url": {
+              "type": "keyword",
+              "index": false
+            },
+            "emotional_tags": {
+              "type": "nested",
+              "properties": {
+                "emotion": {
+                  "type": "keyword"
+                },
+                "intensity": {
+                  "type": "float"
+                },
+                "confidence": {
+                  "type": "float"
+                },
+                "source": {
+                  "type": "keyword"
+                }
+              }
+            },
+            "mood_categories": {
+              "type": "keyword"
+            },
+            "energy_level": {
+              "type": "keyword"
+            },
+            "emotional_impact": {
+              "type": "keyword"
+            },
+            "content_warnings": {
+              "type": "keyword"
+            },
+            "popularity_score": {
+              "type": "float"
+            },
+            "trending_score": {
+              "type": "float"
+            },
+            "quality_score": {
+              "type": "float"
+            },
+            "user_satisfaction_avg": {
+              "type": "float"
+            },
+            "recommendation_score": {
+              "type": "float"
+            },
+            "created_at": {
+              "type": "date"
+            },
+            "updated_at": {
+              "type": "date"
+            },
+            "last_indexed": {
+              "type": "date"
+            }
+          }
+        }
+      },
+      
+      "user_preferences_template": {
+        "index_patterns": ["user_preferences*"],
+        "settings": {
+          "number_of_shards": 2,
+          "number_of_replicas": 1,
+          "refresh_interval": "60s"
+        },
+        "mappings": {
+          "dynamic": "strict",
+          "properties": {
+            "user_id": {
+              "type": "keyword"
+            },
+            "preferences": {
+              "properties": {
+                "genres": {
+                  "type": "nested",
+                  "properties": {
+                    "genre_id": {
+                      "type": "integer"
+                    },
+                    "weight": {
+                      "type": "float"
+                    },
+                    "last_updated": {
+                      "type": "date"
+                    }
+                  }
+                },
+                "actors": {
+                  "type": "nested",
+                  "properties": {
+                    "person_id": {
+                      "type": "long"
+                    },
+                    "preference_score": {
+                      "type": "float"
+                    }
+                  }
+                },
+                "directors": {
+                  "type": "nested",
+                  "properties": {
+                    "person_id": {
+                      "type": "long"
+                    },
+                    "preference_score": {
+                      "type": "float"
+                    }
+                  }
+                },
+                "decades": {
+                  "type": "keyword"
+                },
+                "countries": {
+                  "type": "keyword"
+                },
+                "min_rating": {
+                  "type": "float"
+                },
+                "max_length": {
+                  "type": "integer"
+                },
+                "content_types": {
+                  "type": "keyword"
+                }
+              }
+            },
+            "emotional_profile": {
+              "properties": {
+                "dominant_emotions": {
+                  "type": "keyword"
+                },
+                "mood_patterns": {
+                  "type": "nested",
+                  "properties": {
+                    "emotion": {
+                      "type": "keyword"
+                    },
+                    "frequency": {
+                      "type": "float"
+                    },
+                    "preferred_genres": {
+                      "type": "keyword"
+                    },
+                    "time_of_day": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "energy_preferences": {
+                  "properties": {
+                    "low_energy": {
+                      "type": "keyword"
+                    },
+                    "medium_energy": {
+                      "type": "keyword"
+                    },
+                    "high_energy": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "stress_responses": {
+                  "properties": {
+                    "high_stress": {
+                      "type": "keyword"
+                    },
+                    "medium_stress": {
+                      "type": "keyword"
+                    },
+                    "low_stress": {
+                      "type": "keyword"
+                    }
+                  }
+                }
+              }
+            },
+            "viewing_history_summary": {
+              "properties": {
+                "total_movies": {
+                  "type": "integer"
+                },
+                "favorite_genres": {
+                  "type": "keyword"
+                },
+                "average_rating": {
+                  "type": "float"
+                },
+                "preferred_length": {
+                  "type": "integer"
+                },
+                "viewing_times": {
+                  "type": "keyword"
+                },
+                "completion_rate": {
+                  "type": "float"
+                },
+                "rewatch_rate": {
+                  "type": "float"
+                }
+              }
+            },
+            "updated_at": {
+              "type": "date"
+            }
+          }
+        }
+      },
+      
+      "recommendations_template": {
+        "index_patterns": ["recommendations*"],
+        "settings": {
+          "number_of_shards": 3,
+          "number_of_replicas": 1,
+          "refresh_interval": "10s",
+          "index.lifecycle.name": "recommendations_policy",
+          "index.lifecycle.rollover_alias": "recommendations"
+        },
+        "mappings": {
+          "dynamic": "strict",
+          "properties": {
+            "user_id": {
+              "type": "keyword"
+            },
+            "recommendation_id": {
+              "type": "keyword"
+            },
+            "movie_id": {
+              "type": "long"
+            },
+            "recommendation_type": {
+              "type": "keyword"
+            },
+            "algorithm_version": {
+              "type": "keyword"
+            },
+            "score": {
+              "type": "float"
+            },
+            "rank": {
+              "type": "integer"
+            },
+            "context": {
+              "properties": {
+                "mood": {
+                  "type": "keyword"
+                },
+                "energy_level": {
+                  "type": "keyword"
+                },
+                "stress_level": {
+                  "type": "keyword"
+                },
+                "time_context": {
+                  "type": "keyword"
+                },
+                "available_time": {
+                  "type": "integer"
+                },
+                "viewing_companions": {
+                  "type": "keyword"
+                },
+                "device_type": {
+                  "type": "keyword"
+                },
+                "location_context": {
+                  "type": "keyword"
+                }
+              }
+            },
+            "explanation": {
+              "properties": {
+                "primary_reason": {
+                  "type": "text",
+                  "analyzer": "russian_analyzer"
+                },
+                "secondary_reasons": {
+                  "type": "text",
+                  "analyzer": "russian_analyzer"
+                },
+                "mood_match_score": {
+                  "type": "float"
+                },
+                "confidence": {
+                  "type": "float"
+                },
+                "reasoning_factors": {
+                  "type": "nested",
+                  "properties": {
+                    "factor": {
+                      "type": "keyword"
+                    },
+                    "weight": {
+                      "type": "float"
+                    },
+                    "value": {
+                      "type": "float"
+                    }
+                  }
+                }
+              }
+            },
+            "predictions": {
+              "properties": {
+                "rating": {
+                  "type": "float"
+                },
+                "satisfaction": {
+                  "type": "float"
+                },
+                "completion_probability": {
+                  "type": "float"
+                },
+                "rewatch_probability": {
+                  "type": "float"
+                }
+              }
+            },
+            "generated_at": {
+              "type": "date"
+            },
+            "expires_at": {
+              "type": "date"
+            },
+            "viewed": {
+              "type": "boolean"
+            },
+            "clicked": {
+              "type": "boolean"
+            },
+            "accepted": {
+              "type": "boolean"
+            },
+            "feedback_score": {
+              "type": "float"
+            },
+            "interaction_timestamp": {
+              "type": "date"
+            }
+          }
+        }
+      }
+    },
+    
+    "index_lifecycle_policies": {
+      "recommendations_policy": {
+        "policy": {
+          "phases": {
+            "hot": {
+              "actions": {
+                "rollover": {
+                  "max_size": "5GB",
+                  "max_age": "7d"
+                },
+                "set_priority": {
+                  "priority": 100
+                }
+              }
+            },
+            "warm": {
+              "min_age": "7d",
+              "actions": {
+                "set_priority": {
+                  "priority": 50
+                },
+                "allocate": {
+                  "number_of_replicas": 0
+                }
+              }
+            },
+            "cold": {
+              "min_age": "30d",
+              "actions": {
+                "set_priority": {
+                  "priority": 0
+                }
+              }
+            },
+            "delete": {
+              "min_age": "90d"
+            }
+          }
+        }
+      }
+    },
+    
+    "search_templates": {
+      "movie_search_template": {
+        "script": {
+          "lang": "mustache",
+          "source": {
+            "query": {
+              "bool": {
+                "must": [
+                  {
+                    "multi_match": {
+                      "query": "{{query}}",
+                      "fields": [
+                        "title^3",
+                        "alternative_name^2",
+                        "en_name^2",
+                        "description",
+                        "people.name^1.5"
+                      ],
+                      "type": "best_fields",
+                      "fuzziness": "AUTO"
+                    }
+                  }
+                ],
+                "filter": [
+                  {{#year_from}}
+                  {
+                    "range": {
+                      "year": {
+                        "gte": {{year_from}}
+                      }
+                    }
+                  },
+                  {{/year_from}}
+                  {{#year_to}}
+                  {
+                    "range": {
+                      "year": {
+                        "lte": {{year_to}}
+                      }
+                    }
+                  },
+                  {{/year_to}}
+                  {{#genres}}
+                  {
+                    "nested": {
+                      "path": "genres",
+                      "query": {
+                        "terms": {
+                          "genres.name": {{#toJson}}genres{{/toJson}}
+                        }
+                      }
+                    }
+                  },
+                  {{/genres}}
+                  {{#min_rating}}
+                  {
+                    "range": {
+                      "ratings.average": {
+                        "gte": {{min_rating}}
+                      }
+                    }
+                  },
+                  {{/min_rating}}
+                  {{#max_length}}
+                  {
+                    "range": {
+                      "movie_length": {
+                        "lte": {{max_length}}
+                      }
+                    }
+                  },
+                  {{/max_length}}
+                  {{#mood_categories}}
+                  {
+                    "terms": {
+                      "mood_categories": {{#toJson}}mood_categories{{/toJson}}
+                    }
+                  },
+                  {{/mood_categories}}
+                  {{#energy_level}}
+                  {
+                    "term": {
+                      "energy_level": "{{energy_level}}"
+                    }
+                  }
+                  {{/energy_level}}
+                ]
+              }
+            },
+            "sort": [
+              {{#sort_by_relevance}}
+              "_score",
+              {{/sort_by_relevance}}
+              {{#sort_by_rating}}
+              {
+                "ratings.average": {
+                  "order": "desc"
+                }
+              },
+              {{/sort_by_rating}}
+              {{#sort_by_popularity}}
+              {
+                "popularity_score": {
+                  "order": "desc"
+                }
+              },
+              {{/sort_by_popularity}}
+              {{#sort_by_year}}
+              {
+                "year": {
+                  "order": "desc"
+                }
+              }
+              {{/sort_by_year}}
+            ],
+            "highlight": {
+              "fields": {
+                "title": {},
+                "description": {}
+              }
+            },
+            "_source": {
+              "excludes": ["description"]
+            }
+          }
+        }
+      },
+      
+      "mood_based_recommendation_template": {
+        "script": {
+          "lang": "mustache",
+          "source": {
+            "query": {
+              "function_score": {
+                "query": {
+                  "bool": {
+                    "must": [
+                      {
+                        "nested": {
+                          "path": "emotional_tags",
+                          "query": {
+                            "bool": {
+                              "should": [
+                                {{#user_emotions}}
+                                {
+                                  "term": {
+                                    "emotional_tags.emotion": "{{.}}"
+                                  }
+                                },
+                                {{/user_emotions}}
+                              ]
+                            }
+                          },
+                          "score_mode": "max"
+                        }
+                      }
+                    ],
+                    "filter": [
+                      {
+                        "term": {
+                          "energy_level": "{{energy_level}}"
+                        }
+                      },
+                      {{#max_length}}
+                      {
+                        "range": {
+                          "movie_length": {
+                            "lte": {{max_length}}
+                          }
+                        }
+                      },
+                      {{/max_length}}
+                      {{#min_rating}}
+                      {
+                        "range": {
+                          "ratings.average": {
+                            "gte": {{min_rating}}
+                          }
+                        }
+                      }
+                      {{/min_rating}}
+                    ]
+                  }
+                },
+                "functions": [
+                  {
+                    "nested": {
+                      "path": "emotional_tags",
+                      "query": {
+                        "match_all": {}
+                      },
+                      "score_mode": "max"
+                    },
+                    "field_value_factor": {
+                      "field": "emotional_tags.intensity",
+                      "factor": 2.0,
+                      "modifier": "sqrt"
+                    }
+                  },
+                  {
+                    "field_value_factor": {
+                      "field": "user_satisfaction_avg",
+                      "factor": 1.5,
+                      "modifier": "log1p"
+                    }
+                  },
+                  {
+                    "field_value_factor": {
+                      "field": "popularity_score",
+                      "factor": 1.2,
+                      "modifier": "sqrt"
+                    }
+                  }
+                ],
+                "score_mode": "multiply",
+                "boost_mode": "multiply"
+              }
+            },
+            "sort": [
+              "_score"
+            ],
+            "size": {{size}}
+          }
+        }
+      }
+    }
+  }
+}
+
