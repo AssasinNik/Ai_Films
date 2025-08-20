@@ -14,6 +14,8 @@ import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
+import org.springframework.http.HttpHeaders
+import org.springframework.web.bind.annotation.RequestHeader
 import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
 
@@ -60,6 +62,8 @@ class MovieController(private val service: MovieService) {
         @RequestParam(required = false) minRating: Double?,
         @RequestParam(required = false) maxRating: Double?,
         @RequestParam(required = false) ageRatingMax: Int?,
+        @RequestParam(defaultValue = "rating") orderBy: String,
+        @RequestParam(defaultValue = "desc") direction: String,
         @RequestParam(defaultValue = "1") @Positive page: Int,
         @RequestParam(defaultValue = "20") @Min(1) @Max(100) size: Int,
     ): Mono<GroupedSearchResponse> {
@@ -71,6 +75,7 @@ class MovieController(private val service: MovieService) {
             maxRating = maxRating,
             ageRatingMax = ageRatingMax,
             type = type,
+            sort = com.ai_films.movielibrary.domain.queries.SortOption(orderBy, direction)
         )
         return service.searchByGenresGrouped(genres, filters, page, size)
     }
@@ -79,7 +84,23 @@ class MovieController(private val service: MovieService) {
     fun topNew(@RequestParam(defaultValue = "10") @Min(1) @Max(50) limit: Int): Mono<GroupedListResponse> = service.topNewReleasesGrouped(limit)
 
     @GetMapping("/{id}")
-    fun details(@PathVariable id: Long): Mono<MovieDetails> = service.details(id)
+    fun details(
+        @PathVariable id: Long,
+        @RequestHeader(HttpHeaders.AUTHORIZATION, required = false) authHeader: String?,
+        @RequestHeader(name = "X-User-Id", required = false) userIdHeader: String?
+    ): Mono<MovieDetails> =
+        service.details(id)
+            .doOnSuccess {
+                val userId = userIdHeader ?: extractUserIdFromAuth(authHeader)
+                if (!userId.isNullOrBlank() || !authHeader.isNullOrBlank()) {
+                    service.recordView(userId ?: "", id, authHeader)
+                }
+            }
+
+    private fun extractUserIdFromAuth(authHeader: String?): String? {
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) return null
+        return null // X-User-Id уже выставляет gateway. JWT парсить здесь не будем.
+    }
 }
 
 

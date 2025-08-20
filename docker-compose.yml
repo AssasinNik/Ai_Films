@@ -68,7 +68,9 @@ services:
 
   # Elasticsearch - Search and recommendations
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    build:
+      context: ./services/elasticsearch
+    image: ai_films-elasticsearch:8.11.0-hunspell
     container_name: movie_elasticsearch
     environment:
       - node.name=movie-es-node
@@ -358,6 +360,7 @@ services:
     container_name: movie_data_init
     volumes:
       - ./scripts:/scripts:ro
+      - ./schemas:/schemas:ro
     working_dir: /scripts
     command: >
       bash -c "
@@ -426,6 +429,7 @@ services:
       - MINIO_URL=http://minio:9000
       - MINIO_PUBLIC_URL=http://localhost:9000
       - MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE=health,info,metrics,prometheus
+      - MAIL_PASSWORD=!!!!!!!!
     ports:
       - "127.0.0.1:8082:8082"
     depends_on:

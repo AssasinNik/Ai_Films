@@ -67,6 +67,11 @@ class UserService(
                 }
             }
     }
+
+    fun deleteAccount(userId: String): Mono<Void> =
+        userRepository.findByUserId(userId)
+            .flatMap { user -> userRepository.delete(user) }
+            .then()
 }
 
 

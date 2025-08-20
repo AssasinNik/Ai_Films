@@ -424,7 +424,54 @@
           "number_of_replicas": 1,
           "refresh_interval": "10s",
           "index.lifecycle.name": "recommendations_policy",
-          "index.lifecycle.rollover_alias": "recommendations"
+          "index.lifecycle.rollover_alias": "recommendations",
+          "analysis": {
+            "analyzer": {
+              "russian_analyzer": {
+                "type": "custom",
+                "tokenizer": "standard",
+                "filter": [
+                  "lowercase",
+                  "russian_morphology",
+                  "russian_stop",
+                  "snowball_russian"
+                ]
+              },
+              "autocomplete_analyzer": {
+                "type": "custom",
+                "tokenizer": "keyword",
+                "filter": ["lowercase", "edge_ngram_filter"]
+              },
+              "search_analyzer": {
+                "type": "custom",
+                "tokenizer": "standard",
+                "filter": [
+                  "lowercase",
+                  "russian_morphology",
+                  "russian_stop"
+                ]
+              }
+            },
+            "filter": {
+              "edge_ngram_filter": {
+                "type": "edge_ngram",
+                "min_gram": 2,
+                "max_gram": 20
+              },
+              "russian_stop": {
+                "type": "stop",
+                "stopwords": "_russian_"
+              },
+              "snowball_russian": {
+                "type": "snowball",
+                "language": "Russian"
+              },
+              "russian_morphology": {
+                "type": "hunspell",
+                "locale": "ru_RU"
+              }
+            }
+          }
         },
         "mappings": {
           "dynamic": "strict",
@@ -598,225 +645,13 @@
       "movie_search_template": {
         "script": {
           "lang": "mustache",
-          "source": {
-            "query": {
-              "bool": {
-                "must": [
-                  {
-                    "multi_match": {
-                      "query": "{{query}}",
-                      "fields": [
-                        "title^3",
-                        "alternative_name^2",
-                        "en_name^2",
-                        "description",
-                        "people.name^1.5"
-                      ],
-                      "type": "best_fields",
-                      "fuzziness": "AUTO"
-                    }
-                  }
-                ],
-                "filter": [
-                  {{#year_from}}
-                  {
-                    "range": {
-                      "year": {
-                        "gte": {{year_from}}
-                      }
-                    }
-                  },
-                  {{/year_from}}
-                  {{#year_to}}
-                  {
-                    "range": {
-                      "year": {
-                        "lte": {{year_to}}
-                      }
-                    }
-                  },
-                  {{/year_to}}
-                  {{#genres}}
-                  {
-                    "nested": {
-                      "path": "genres",
-                      "query": {
-                        "terms": {
-                          "genres.name": {{#toJson}}genres{{/toJson}}
-                        }
-                      }
-                    }
-                  },
-                  {{/genres}}
-                  {{#min_rating}}
-                  {
-                    "range": {
-                      "ratings.average": {
-                        "gte": {{min_rating}}
-                      }
-                    }
-                  },
-                  {{/min_rating}}
-                  {{#max_length}}
-                  {
-                    "range": {
-                      "movie_length": {
-                        "lte": {{max_length}}
-                      }
-                    }
-                  },
-                  {{/max_length}}
-                  {{#mood_categories}}
-                  {
-                    "terms": {
-                      "mood_categories": {{#toJson}}mood_categories{{/toJson}}
-                    }
-                  },
-                  {{/mood_categories}}
-                  {{#energy_level}}
-                  {
-                    "term": {
-                      "energy_level": "{{energy_level}}"
-                    }
-                  }
-                  {{/energy_level}}
-                ]
-              }
-            },
-            "sort": [
-              {{#sort_by_relevance}}
-              "_score",
-              {{/sort_by_relevance}}
-              {{#sort_by_rating}}
-              {
-                "ratings.average": {
-                  "order": "desc"
-                }
-              },
-              {{/sort_by_rating}}
-              {{#sort_by_popularity}}
-              {
-                "popularity_score": {
-                  "order": "desc"
-                }
-              },
-              {{/sort_by_popularity}}
-              {{#sort_by_year}}
-              {
-                "year": {
-                  "order": "desc"
-                }
-              }
-              {{/sort_by_year}}
-            ],
-            "highlight": {
-              "fields": {
-                "title": {},
-                "description": {}
-              }
-            },
-            "_source": {
-              "excludes": ["description"]
-            }
-          }
+          "source": "{\n  \"query\": {\n    \"bool\": {\n      \"must\": [\n        {\n          \"multi_match\": {\n            \"query\": \"{{query}}\",\n            \"fields\": [\n              \"title^3\",\n              \"alternative_name^2\",\n              \"en_name^2\",\n              \"description\",\n              \"people.name^1.5\"\n            ],\n            \"type\": \"best_fields\",\n            \"fuzziness\": \"AUTO\"\n          }\n        }\n      ]\n    }\n  },\n  \"sort\": [\n    \"_score\"\n  ],\n  \"size\": {{size}}\n}"
         }
       },
-      
       "mood_based_recommendation_template": {
         "script": {
           "lang": "mustache",
-          "source": {
-            "query": {
-              "function_score": {
-                "query": {
-                  "bool": {
-                    "must": [
-                      {
-                        "nested": {
-                          "path": "emotional_tags",
-                          "query": {
-                            "bool": {
-                              "should": [
-                                {{#user_emotions}}
-                                {
-                                  "term": {
-                                    "emotional_tags.emotion": "{{.}}"
-                                  }
-                                },
-                                {{/user_emotions}}
-                              ]
-                            }
-                          },
-                          "score_mode": "max"
-                        }
-                      }
-                    ],
-                    "filter": [
-                      {
-                        "term": {
-                          "energy_level": "{{energy_level}}"
-                        }
-                      },
-                      {{#max_length}}
-                      {
-                        "range": {
-                          "movie_length": {
-                            "lte": {{max_length}}
-                          }
-                        }
-                      },
-                      {{/max_length}}
-                      {{#min_rating}}
-                      {
-                        "range": {
-                          "ratings.average": {
-                            "gte": {{min_rating}}
-                          }
-                        }
-                      }
-                      {{/min_rating}}
-                    ]
-                  }
-                },
-                "functions": [
-                  {
-                    "nested": {
-                      "path": "emotional_tags",
-                      "query": {
-                        "match_all": {}
-                      },
-                      "score_mode": "max"
-                    },
-                    "field_value_factor": {
-                      "field": "emotional_tags.intensity",
-                      "factor": 2.0,
-                      "modifier": "sqrt"
-                    }
-                  },
-                  {
-                    "field_value_factor": {
-                      "field": "user_satisfaction_avg",
-                      "factor": 1.5,
-                      "modifier": "log1p"
-                    }
-                  },
-                  {
-                    "field_value_factor": {
-                      "field": "popularity_score",
-                      "factor": 1.2,
-                      "modifier": "sqrt"
-                    }
-                  }
-                ],
-                "score_mode": "multiply",
-                "boost_mode": "multiply"
-              }
-            },
-            "sort": [
-              "_score"
-            ],
-            "size": {{size}}
-          }
+          "source": "{\n  \"query\": {\n    \"function_score\": {\n      \"query\": {\n        \"bool\": {\n          \"must\": [\n            {\n              \"nested\": {\n                \"path\": \"emotional_tags\",\n                \"query\": { \"match_all\": {} },\n                \"score_mode\": \"max\"\n              }\n            }\n          ]\n        }\n      },\n      \"functions\": [\n        {\n          \"field_value_factor\": {\n            \"field\": \"emotional_tags.intensity\",\n            \"factor\": 2.0,\n            \"modifier\": \"sqrt\"\n          }\n        },\n        {\n          \"field_value_factor\": {\n            \"field\": \"user_satisfaction_avg\",\n            \"factor\": 1.5,\n            \"modifier\": \"log1p\"\n          }\n        }\n      ],\n      \"score_mode\": \"multiply\",\n      \"boost_mode\": \"multiply\"\n    }\n  },\n  \"sort\": [\n    \"_score\"\n  ],\n  \"size\": {{size}}\n}"
         }
       }
     }

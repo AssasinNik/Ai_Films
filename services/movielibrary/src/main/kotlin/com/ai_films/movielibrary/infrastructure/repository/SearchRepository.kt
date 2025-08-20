@@ -68,15 +68,38 @@ class SearchRepository(
     fun searchByGenres(genres: List<String>, filters: MovieSearchFilters, page: Int, size: Int): Mono<Pair<List<MediaItemCard>, Long>> {
         val from = (page - 1) * size
 
-        val genreValues = genres.map { co.elastic.clients.elasticsearch._types.FieldValue.of(it) }
-        val bool = BoolQuery.Builder().filter(buildFilterQueries(filters) + listOf(
-            Query.of { q -> q.terms { t -> t.field("genres.name.keyword").terms { v -> v.value(genreValues) } } }
-        )).build()
+        // Nested жанры: суммарный скор по количеству совпадений жанров
+        val bool = BoolQuery.Builder()
+            .must(
+                Query.of { q ->
+                    q.nested { n ->
+                        n.path("genres")
+                            .scoreMode(co.elastic.clients.elasticsearch._types.query_dsl.ChildScoreMode.Sum)
+                            .query { nq ->
+                                nq.bool { b ->
+                                    genres.fold(b) { acc, g ->
+                                        acc.should { s -> s.term { t -> t.field("genres.name.keyword").value(g) } }
+                                    }
+                                    b.minimumShouldMatch("1")
+                                }
+                            }
+                    }
+                }
+            )
+            .filter(buildFilterQueries(filters))
+            .build()
+
+        val primarySort = when (filters.sort.orderBy.lowercase()) {
+            "year" -> SortOptions.Builder().field { f -> f.field("year").order(toEsOrder(filters.sort.direction)) }.build()
+            "title" -> SortOptions.Builder().field { f -> f.field("title.keyword").order(toEsOrder(filters.sort.direction)) }.build()
+            else -> SortOptions.Builder().field { f -> f.field("ratings.kp").order(toEsOrder(filters.sort.direction)) }.build()
+        }
 
         val req = SearchRequest.Builder()
             .index(indexName)
             .from(from)
             .size(size)
+            .sort(primarySort)
             .sort { s -> s.field { f -> f.field("_score").order(SortOrder.Desc) } }
             .query { q -> q.bool(bool) }
             .build()
@@ -140,7 +163,14 @@ class SearchRepository(
         filters.type?.let { t -> list += Query.of { q -> q.term { term -> term.field("type.keyword").value(t) } } }
         filters.yearFrom?.let { y -> list += Query.of { q -> q.range { r -> r.field("year").gte(JsonData.of(y)) } } }
         filters.yearTo?.let { y -> list += Query.of { q -> q.range { r -> r.field("year").lte(JsonData.of(y)) } } }
-        filters.country?.let { c -> list += Query.of { q -> q.term { t -> t.field("countries.name.keyword").value(c) } } }
+        filters.country?.let { c ->
+            list += Query.of { q ->
+                q.nested { n ->
+                    n.path("countries")
+                        .query { nq -> nq.term { t -> t.field("countries.name.keyword").value(c) } }
+                }
+            }
+        }
         filters.minRating?.let { r -> list += Query.of { q -> q.range { rr -> rr.field("ratings.kp").gte(JsonData.of(r)) } } }
         filters.maxRating?.let { r -> list += Query.of { q -> q.range { rr -> rr.field("ratings.kp").lte(JsonData.of(r)) } } }
         filters.ageRatingMax?.let { a -> list += Query.of { q -> q.range { rr -> rr.field("age_rating").lte(JsonData.of(a)) } } }

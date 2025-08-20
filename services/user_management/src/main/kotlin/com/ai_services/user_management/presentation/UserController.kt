@@ -25,6 +25,10 @@ class UserController(private val userService: UserService) {
         userService.uploadUserPhoto(principal, file)
             .doOnSubscribe { log.info("Upload photo attempt user={}", principal) }
             .map { mapOf("url" to it) }
+
+    @DeleteMapping("/me")
+    fun deleteMe(@AuthenticationPrincipal principal: String): Mono<Void> =
+        userService.deleteAccount(principal)
 }
 
 

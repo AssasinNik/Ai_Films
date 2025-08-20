@@ -26,7 +26,7 @@
               "raw": "{\n  \"email\": \"user1@example.com\",\n  \"password\": \"Passw0rd123\",\n  \"username\": \"User One\"\n}",
               "options": {"raw": {"language": "json"}}
             },
-            "description": "Регистрация пользователя.\n\nПоля:\n- email: string (email) — уникальная почта\n- password: string (8-128 символов) — пароль\n- username: string (3-50) — отображаемое имя\n\nОжидаемый ответ 200:\n{\n  \"userId\": \"<uuid>\",\n  \"accessToken\": \"<JWT>\",\n  \"refreshToken\": \"<JWT>\"\n}\n"
+            "description": "ПУБЛИЧНЫЙ (JWT не требуется). Регистрация пользователя (этап 1)."
           },
           "event": [
             {
@@ -60,7 +60,7 @@
               "raw": "{\n  \"email\": \"user1@example.com\",\n  \"password\": \"Passw0rd123\"\n}",
               "options": {"raw": {"language": "json"}}
             },
-            "description": "Логин пользователя. Возвращает access/refresh токены."
+            "description": "ПУБЛИЧНЫЙ (JWT не требуется). Логин (этап 1)."
           },
           "event": [
             {
@@ -71,6 +71,77 @@
                   "if (json.accessToken) pm.collectionVariables.set('accessToken', json.accessToken);",
                   "if (json.refreshToken) pm.collectionVariables.set('refreshToken', json.refreshToken);",
                   "if (json.userId) pm.collectionVariables.set('userId', json.userId);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Start Verification",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/api/v1/auth/start-verification",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth","api","v1","auth","start-verification"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user1@example.com\"\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "description": "ПУБЛИЧНЫЙ (JWT не требуется). Отправить код на почту."
+          }
+        },
+        {
+          "name": "Resend Code",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/api/v1/auth/resend-code",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth","api","v1","auth","resend-code"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user1@example.com\"\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "description": "ПУБЛИЧНЫЙ (JWT не требуется). Повторно отправляет код (старый код автоматически инвалидируется)."
+          }
+        },
+        {
+          "name": "Verify Code",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/api/v1/auth/verify-code",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth","api","v1","auth","verify-code"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user1@example.com\",\n  \"code\": \"123456\"\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "description": "ПУБЛИЧНЫЙ (JWT не требуется). Подтверждение кода. Ответ: { userId, accessToken, refreshToken }."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "try { const json = pm.response.json(); if (json.accessToken) pm.collectionVariables.set('accessToken', json.accessToken); if (json.refreshToken) pm.collectionVariables.set('refreshToken', json.refreshToken); } catch(e) {}"
                 ],
                 "type": "text/javascript"
               }
@@ -94,7 +165,7 @@
               "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}",
               "options": {"raw": {"language": "json"}}
             },
-            "description": "Ротация refresh токена и получение новой пары токенов."
+            "description": "ПУБЛИЧНЫЙ (JWT не требуется). Ротация refresh токена и получение новой пары токенов."
           },
           "event": [
             {
@@ -110,6 +181,18 @@
               }
             }
           ]
+        },
+        {
+          "name": "Logout All",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/auth/api/v1/auth/logout-all",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth","api","v1","auth","logout-all"]
+            },
+            "description": "Завершить все сессии пользователя (требует JWT, передавать refresh в Authorization: Bearer)."
+          }
         }
       ]
     },
@@ -131,7 +214,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["auth","api","v1","mood","me"]
             },
-            "description": "Текущий эмоциональный профиль пользователя. Если отсутствует — создаётся пустой. Ответ: EmotionalProfile (currentMood, moodHistory[])."
+            "description": "Текущий эмоциональный профиль пользователя."
           }
         },
         {
@@ -151,7 +234,146 @@
               "raw": "{\n  \"primary_emotion\": \"calm\",\n  \"intensity\": 0.6,\n  \"energy_level\": 0.4,\n  \"stress_level\": 0.2\n}",
               "options": {"raw": {"language": "json"}}
             },
-            "description": "Обновление текущего настроения. Поля:\n- primary_emotion: строка (2-30), например calm, happy, sad, anxious\n- intensity: 0..1 — интенсивность\n- energy_level: 0..1 — уровень энергии\n- stress_level: 0..1 — уровень стресса\n\nВозвращает обновлённый EmotionalProfile."
+            "description": "Обновление текущего настроения."
+          }
+        },
+        {
+          "name": "Search Text (both types, default sort by rating desc)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/movies/search/text?q=мстители&yearFrom=2018&yearTo=2025&country=США&minRating=6.5&maxRating=9.5&ageRatingMax=18&orderBy=rating&direction=desc&page=1&size=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["movies","search","text"],
+              "query": [
+                {"key": "q", "value": "мстители"},
+                {"key": "yearFrom", "value": "2018"},
+                {"key": "yearTo", "value": "2025"},
+                {"key": "country", "value": "США"},
+                {"key": "minRating", "value": "6.5"},
+                {"key": "maxRating", "value": "9.5"},
+                {"key": "ageRatingMax", "value": "18"},
+                {"key": "orderBy", "value": "rating"},
+                {"key": "direction", "value": "desc"},
+                {"key": "page", "value": "1"},
+                {"key": "size", "value": "20"}
+              ]
+            },
+            "description": "Тип не указан → вернёт одновременно 20 фильмов и 20 сериалов."
+          }
+        },
+        {
+          "name": "Search Text (order by year asc)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/movies/search/text?q=звезда&orderBy=year&direction=asc&page=1&size=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["movies","search","text"],
+              "query": [
+                {"key": "q", "value": "звезда"},
+                {"key": "orderBy", "value": "year"},
+                {"key": "direction", "value": "asc"},
+                {"key": "page", "value": "1"},
+                {"key": "size", "value": "20"}
+              ]
+            },
+            "description": "Сортировка по году по возрастанию."
+          }
+        },
+        {
+          "name": "Search Text (order by title asc, type=tv-series)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/movies/search/text?q=дом&type=tv-series&orderBy=title&direction=asc&page=1&size=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["movies","search","text"],
+              "query": [
+                {"key": "q", "value": "дом"},
+                {"key": "type", "value": "tv-series"},
+                {"key": "orderBy", "value": "title"},
+                {"key": "direction", "value": "asc"},
+                {"key": "page", "value": "1"},
+                {"key": "size", "value": "20"}
+              ]
+            },
+            "description": "Только сериалы, сортировка по названию."
+          }
+        },
+        {
+          "name": "Search Text (pagination page=2)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/movies/search/text?q=звезда&page=2&size=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["movies","search","text"],
+              "query": [
+                {"key": "q", "value": "звезда"},
+                {"key": "page", "value": "2"},
+                {"key": "size", "value": "20"}
+              ]
+            },
+            "description": "Пагинация, страница 2."
+          }
+        },
+        {
+          "name": "Search Genres (with rating and country filters)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/movies/search/genres?genres=драма&genres=комедия&country=США&minRating=7&maxRating=9.5&page=1&size=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["movies","search","genres"],
+              "query": [
+                {"key": "genres", "value": "драма"},
+                {"key": "genres", "value": "комедия"},
+                {"key": "country", "value": "США"},
+                {"key": "minRating", "value": "7"},
+                {"key": "maxRating", "value": "9.5"},
+                {"key": "page", "value": "1"},
+                {"key": "size", "value": "20"}
+              ]
+            },
+            "description": "Фильтрация по стране и диапазону рейтинга."
+          }
+        },
+        {
+          "name": "Search Genres (order by year desc)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/movies/search/genres?genres=боевик&genres=приключения&orderBy=year&direction=desc&page=1&size=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["movies","search","genres"],
+              "query": [
+                {"key": "genres", "value": "боевик"},
+                {"key": "genres", "value": "приключения"},
+                {"key": "orderBy", "value": "year"},
+                {"key": "direction", "value": "desc"},
+                {"key": "page", "value": "1"},
+                {"key": "size", "value": "20"}
+              ]
+            },
+            "description": "Сортировка по году."
+          }
+        },
+        {
+          "name": "Search Genres (pagination page=2)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/movies/search/genres?genres=фантастика&page=2&size=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["movies","search","genres"],
+              "query": [
+                {"key": "genres", "value": "фантастика"},
+                {"key": "page", "value": "2"},
+                {"key": "size", "value": "20"}
+              ]
+            },
+            "description": "Пагинация, страница 2."
           }
         }
       ]
@@ -174,7 +396,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["auth","api","v1","users","me"]
             },
-            "description": "Информация о текущем пользователе. Требуется Authorization: Bearer {{accessToken}}.\n\nОжидаемый ответ 200: объект User."
+            "description": "Информация о текущем пользователе."
           }
         },
         {
@@ -194,7 +416,7 @@
               "raw": "{\n  \"username\": \"New Name\"\n}",
               "options": {"raw": {"language": "json"}}
             },
-            "description": "Обновление профиля. Поля:\n- username: новое имя пользователя."
+            "description": "Обновление профиля."
           }
         },
         {
@@ -213,7 +435,19 @@
                 {"key": "file", "type": "file", "src": ""}
               ]
             },
-            "description": "Загрузка фото пользователя (multipart/form-data, поле file). Возвращает { url }."
+            "description": "Загрузка фото пользователя."
+          }
+        },
+        {
+          "name": "Delete Account",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/auth/api/v1/users/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth","api","v1","users","me"]
+            },
+            "description": "Удаление аккаунта (требует JWT)."
           }
         }
       ]
@@ -249,7 +483,7 @@
                 {"key": "size", "value": "20"}
               ]
             },
-            "description": "Текстовый поиск по названию/альт. названию/описанию.\nОтвет: { movies: PagedResponse, series: PagedResponse }.\nЭлементы содержат: id, title, rating, year, genres[], country[], description, posterUrl, type."
+            "description": "Текстовый поиск по названию/описанию."
           }
         },
         {
@@ -268,7 +502,7 @@
                 {"key": "size", "value": "20"}
               ]
             },
-            "description": "Поиск по жанрам (несколько значений параметра genres). Ранжирование по числу совпавших жанров, затем по рейтингу/году. Ответ: { movies, series }."
+            "description": "Поиск по жанрам с приоритизацией совпадений."
           }
         },
         {
@@ -283,7 +517,7 @@
                 {"key": "limit", "value": "10"}
               ]
             },
-            "description": "Новинки (последние по дате + лучший рейтинг). Возвращает { movies: [], series: [] }."
+            "description": "Новинки."
           }
         },
         {
@@ -295,7 +529,146 @@
               "host": ["{{baseUrl}}"],
               "path": ["movies","{{movieId}}"]
             },
-            "description": "Полная информация о фильме/сериале: основные поля, жанры[], countries[], people[] (name, role, characterName), seasons[]."
+            "description": "Детали фильма/сериала."
+          }
+        },
+        {
+          "name": "Search Text (both types, default sort by rating desc)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/movies/search/text?q=мстители&yearFrom=2018&yearTo=2025&country=США&minRating=6.5&maxRating=9.5&ageRatingMax=18&orderBy=rating&direction=desc&page=1&size=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["movies","search","text"],
+              "query": [
+                {"key": "q", "value": "мстители"},
+                {"key": "yearFrom", "value": "2018"},
+                {"key": "yearTo", "value": "2025"},
+                {"key": "country", "value": "США"},
+                {"key": "minRating", "value": "6.5"},
+                {"key": "maxRating", "value": "9.5"},
+                {"key": "ageRatingMax", "value": "18"},
+                {"key": "orderBy", "value": "rating"},
+                {"key": "direction", "value": "desc"},
+                {"key": "page", "value": "1"},
+                {"key": "size", "value": "20"}
+              ]
+            },
+            "description": "Тип не указан → вернёт одновременно 20 фильмов и 20 сериалов."
+          }
+        },
+        {
+          "name": "Search Text (order by year asc)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/movies/search/text?q=звезда&orderBy=year&direction=asc&page=1&size=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["movies","search","text"],
+              "query": [
+                {"key": "q", "value": "звезда"},
+                {"key": "orderBy", "value": "year"},
+                {"key": "direction", "value": "asc"},
+                {"key": "page", "value": "1"},
+                {"key": "size", "value": "20"}
+              ]
+            },
+            "description": "Сортировка по году по возрастанию."
+          }
+        },
+        {
+          "name": "Search Text (order by title asc, type=tv-series)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/movies/search/text?q=дом&type=tv-series&orderBy=title&direction=asc&page=1&size=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["movies","search","text"],
+              "query": [
+                {"key": "q", "value": "дом"},
+                {"key": "type", "value": "tv-series"},
+                {"key": "orderBy", "value": "title"},
+                {"key": "direction", "value": "asc"},
+                {"key": "page", "value": "1"},
+                {"key": "size", "value": "20"}
+              ]
+            },
+            "description": "Только сериалы, сортировка по названию."
+          }
+        },
+        {
+          "name": "Search Text (pagination page=2)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/movies/search/text?q=звезда&page=2&size=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["movies","search","text"],
+              "query": [
+                {"key": "q", "value": "звезда"},
+                {"key": "page", "value": "2"},
+                {"key": "size", "value": "20"}
+              ]
+            },
+            "description": "Пагинация, страница 2."
+          }
+        },
+        {
+          "name": "Search Genres (with rating and country filters)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/movies/search/genres?genres=драма&genres=комедия&country=США&minRating=7&maxRating=9.5&page=1&size=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["movies","search","genres"],
+              "query": [
+                {"key": "genres", "value": "драма"},
+                {"key": "genres", "value": "комедия"},
+                {"key": "country", "value": "США"},
+                {"key": "minRating", "value": "7"},
+                {"key": "maxRating", "value": "9.5"},
+                {"key": "page", "value": "1"},
+                {"key": "size", "value": "20"}
+              ]
+            },
+            "description": "Фильтрация по стране и диапазону рейтинга."
+          }
+        },
+        {
+          "name": "Search Genres (order by year desc)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/movies/search/genres?genres=боевик&genres=приключения&orderBy=year&direction=desc&page=1&size=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["movies","search","genres"],
+              "query": [
+                {"key": "genres", "value": "боевик"},
+                {"key": "genres", "value": "приключения"},
+                {"key": "orderBy", "value": "year"},
+                {"key": "direction", "value": "desc"},
+                {"key": "page", "value": "1"},
+                {"key": "size", "value": "20"}
+              ]
+            },
+            "description": "Сортировка по году."
+          }
+        },
+        {
+          "name": "Search Genres (pagination page=2)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/movies/search/genres?genres=фантастика&page=2&size=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["movies","search","genres"],
+              "query": [
+                {"key": "genres", "value": "фантастика"},
+                {"key": "page", "value": "2"},
+                {"key": "size", "value": "20"}
+              ]
+            },
+            "description": "Пагинация, страница 2."
           }
         }
       ]

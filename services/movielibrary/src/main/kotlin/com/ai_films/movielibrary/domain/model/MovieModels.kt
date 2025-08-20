@@ -42,7 +42,8 @@ data class PersonCredit(
     val id: Long?,
     val name: String?,
     val role: String?,
-    val characterName: String?
+    val characterName: String?,
+    val photoUrl: String?
 )
 
 data class SeasonDetails(

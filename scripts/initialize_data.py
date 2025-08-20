@@ -6,6 +6,7 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
+import pathlib
 import logging
 
 import psycopg2
@@ -1036,6 +1037,34 @@ class EsRepo:
         except Exception:
             pass
 
+    # ---- Setup helpers ----
+    def put_index_template(self, name: str, body: Dict[str, Any]) -> None:
+        if not self.client:
+            return
+        try:
+            self.client.indices.put_index_template(name=name, body=body)
+        except Exception as e:
+            log(f"⚠️  Failed to put index template {name}: {e}")
+
+    def put_ilm_policy(self, name: str, policy: Dict[str, Any]) -> None:
+        if not self.client:
+            return
+        try:
+            self.client.ilm.put_lifecycle(name=name, policy=policy)
+        except Exception as e:
+            log(f"⚠️  Failed to put ILM policy {name}: {e}")
+
+    def put_stored_script(self, name: str, script: Dict[str, Any]) -> None:
+        if not self.client:
+            return
+        try:
+            scr = script.get("script") if isinstance(script, dict) else None
+            if scr is None:
+                scr = script
+            self.client.put_script(id=name, script=scr)
+        except Exception as e:
+            log(f"⚠️  Failed to put stored script {name}: {e}")
+
 
 # -------------------------------
 # Redis operations
@@ -1419,6 +1448,99 @@ def seed_from_mongo() -> None:
             es = EsRepo(ELASTICSEARCH_URL)
             es.connect()
             log("✅ Elasticsearch connection successful")
+            # Apply Elasticsearch setup
+            try:
+                # Prefer mounted /schemas in container, fallback to repo path
+                mounted = pathlib.Path('/schemas/elasticsearch_setup.json')
+                setup_path = mounted if mounted.exists() else (pathlib.Path(__file__).resolve().parents[1] / 'schemas' / 'elasticsearch_setup.json')
+                if setup_path.exists():
+                    with open(setup_path, 'r', encoding='utf-8') as f:
+                        import json as _json
+                        setup = _json.load(f).get('elasticsearch_setup', {})
+                    # Helpers to massage setup JSON into ES 8 API shapes
+                    def to_composable_index_template(tpl: Dict[str, Any]) -> Dict[str, Any]:
+                        tpl = dict(tpl or {})
+                        index_patterns = tpl.get('index_patterns') or tpl.get('indexPatterns') or []
+                        template_block: Dict[str, Any] = {}
+                        if 'settings' in tpl:
+                            template_block['settings'] = tpl['settings']
+                        if 'mappings' in tpl:
+                            template_block['mappings'] = tpl['mappings']
+                        if 'aliases' in tpl:
+                            template_block['aliases'] = tpl['aliases']
+                        # Remove moved keys
+                        for k in ['settings', 'mappings', 'aliases']:
+                            tpl.pop(k, None)
+                        # Compose final body
+                        body: Dict[str, Any] = {
+                            'index_patterns': index_patterns,
+                            'template': template_block
+                        }
+                        # Carry optional fields
+                        for opt in ['priority', 'version', '_meta']:
+                            if opt in tpl:
+                                body[opt] = tpl[opt]
+                        return body
+
+                    def fix_ilm_policy(policy: Dict[str, Any]) -> Dict[str, Any]:
+                        pol = dict(policy or {})
+                        phases = pol.get('phases') or {}
+                        for phase_name, phase in list(phases.items()):
+                            if not isinstance(phase, dict):
+                                continue
+                            if 'actions' not in phase:
+                                phase['actions'] = {}
+                            # If this is delete phase and no delete action specified
+                            if phase_name == 'delete' and 'delete' not in phase['actions']:
+                                phase['actions']['delete'] = {}
+                            phases[phase_name] = phase
+                        pol['phases'] = phases
+                        return pol
+
+                    # Try applying as-is, then fallback to sanitized if hunspell missing
+                    def sanitize_template(tpl: Dict[str, Any]) -> Dict[str, Any]:
+                        tpl = dict(tpl or {})
+                        settings = tpl.get('settings') or {}
+                        analysis = settings.get('analysis') or {}
+                        filters = analysis.get('filter') or {}
+                        if 'russian_morphology' in filters:
+                            filters.pop('russian_morphology', None)
+                            analysis['filter'] = filters
+                        analyzers = analysis.get('analyzer') or {}
+                        if 'russian_analyzer' in analyzers:
+                            ra = analyzers['russian_analyzer']
+                            ra['tokenizer'] = 'standard'
+                            ra['filter'] = ['lowercase', 'snowball_russian', 'russian_stop']
+                            analyzers['russian_analyzer'] = ra
+                            analysis['analyzer'] = analyzers
+                        if analysis:
+                            settings['analysis'] = analysis
+                            tpl['settings'] = settings
+                        return tpl
+
+                    for name, raw in (setup.get('index_templates') or {}).items():
+                        tpl = to_composable_index_template(raw)
+                        try:
+                            es.put_index_template(name, tpl)
+                            log(f"✅ Applied ES index template: {name}")
+                        except Exception as e:
+                            log(f"⚠️  Template {name} failed as-is, retry with sanitized analysis: {e}")
+                            es.put_index_template(name, to_composable_index_template(sanitize_template(raw)))
+                            log(f"✅ Applied ES index template (sanitized): {name}")
+                    for name, pol in (setup.get('index_lifecycle_policies') or {}).items():
+                        final_policy = fix_ilm_policy(pol.get('policy') or {})
+                        try:
+                            es.put_ilm_policy(name, final_policy)
+                            log(f"✅ Applied ES ILM policy: {name}")
+                        except Exception as pe:
+                            log(f"⚠️  ILM policy {name} failed: {pe}")
+                    for name, scr in (setup.get('search_templates') or {}).items():
+                        es.put_stored_script(name, scr)
+                        log(f"✅ Applied ES stored script: {name}")
+                else:
+                    log("⚠️  schemas/elasticsearch_setup.json not found, skipping ES setup")
+            except Exception as ee:
+                log(f"⚠️  ES setup application failed: {ee}")
         except Exception as e:
             log(f"⚠️  Failed to connect to Elasticsearch: {e}")
             log("⚠️  Continuing without Elasticsearch indexing...")

@@ -33,6 +33,9 @@ class SecurityConfig(
                     .pathMatchers(HttpMethod.POST, "/api/v1/auth/register").permitAll()
                     .pathMatchers(HttpMethod.POST, "/api/v1/auth/login").permitAll()
                     .pathMatchers(HttpMethod.POST, "/api/v1/auth/refresh").permitAll()
+                    .pathMatchers(HttpMethod.POST, "/api/v1/auth/start-verification").permitAll()
+                    .pathMatchers(HttpMethod.POST, "/api/v1/auth/verify-code").permitAll()
+                    .pathMatchers(HttpMethod.POST, "/api/v1/auth/resend-code").permitAll()
                     .pathMatchers("/actuator/**").permitAll()
                     .anyExchange().authenticated()
             }

@@ -262,7 +262,7 @@ class MovieRepository(private val client: DatabaseClient) {
         """.trimIndent()
 
         val peopleSql = """
-            SELECT p.id, p.name, r.name as role, mp.character_name
+            SELECT p.id, p.name, r.name as role, mp.character_name, p.photo_url
             FROM movie_people mp
             LEFT JOIN people p ON p.id = mp.person_id
             LEFT JOIN roles r ON r.id = mp.role_id
@@ -312,6 +312,7 @@ class MovieRepository(private val client: DatabaseClient) {
                     name = row.get("name") as String?,
                     role = row.get("role") as String?,
                     characterName = row.get("character_name") as String?,
+                    photoUrl = row.get("photo_url") as String?,
                 )
             }
             .all()
